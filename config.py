@@ -10,14 +10,15 @@ STRATEGY_MODULE = "strategy.strategy_sample1"  # 使用的策略模組
 
 # 回測設定
 INITIAL_CAPITAL = 100000  # 初始資金（元）
-BACKTEST_DAYS = 180  # 回測區間（天數）
+BACKTEST_START_DATE = "2025-11-01"  # 回測開始日期（YYYY-MM-DD）
+BACKTEST_END_DATE = "2025-12-31"  # 回測結束日期（YYYY-MM-DD）
 
 # 交易成本
 BUY_FEE_RATE = 0.0004  # 買入手續費率 0.04%
 SELL_FEE_RATE = 0.0004  # 賣出手續費率 0.04%
 SELL_TAX_RATE = 0.003   # 證交稅率 0.3%
 MIN_FEE = 1  # 手續費最低消費（元）
-MIN_TRANSACTION = 6000  # 最低交易金額（元）
+MIN_TRANSACTION = 4000  # 最低交易金額（元）
 
 # 資料庫設定
 DB_PATH = "data/stock_data.db"  # 本地資料庫路徑

@@ -18,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(config.LOG_PATH, encoding='utf-8'),
+        logging.FileHandler(config.LOG_PATH, mode='w', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -76,13 +76,6 @@ def main():
         strategy = strategy_module.StrategyInstance(db)
         strategy_description = strategy_module.get_strategy_description()
         report_name = strategy_module.get_report_name()
-        
-        # 預先載入目標股票的資料（避免回測時反覆從網路下載）
-        logger.info("步驟 2.5: 預先載入目標股票資料")
-        if hasattr(strategy, 'target_stocks'):
-            for stock_id in strategy.target_stocks:
-                logger.info(f"  預載股票 {stock_id}...")
-                db._ensure_stock_data(stock_id)
         
         # 初始化回測引擎
         logger.info("步驟 3: 初始化回測引擎")

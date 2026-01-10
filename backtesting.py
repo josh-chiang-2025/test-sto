@@ -120,6 +120,8 @@ class BacktestEngine:
         
         # 記錄交易
         stock_name = self.db.get_stock_name(stock_id)
+        # 計算當前淨值
+        current_net_value = self._calculate_total_value(date)
         self.transactions.append({
             'date': date,
             'action': 'buy',
@@ -130,6 +132,7 @@ class BacktestEngine:
             'amount': actual_amount,
             'fee': actual_fee,
             'cash': self.cash,
+            'net_value': current_net_value,
             'reason': reason
         })
         
@@ -162,6 +165,11 @@ class BacktestEngine:
         else:
             quantity = min(quantity, self.positions[stock_id]['quantity'])
         
+        # 檢查賣出股數是否有效
+        if quantity <= 0:
+            logger.warning(f"{date}: 股票 {stock_id} 持倉數量為 0，無法賣出")
+            return False
+        
         # 計算賣出金額
         amount = quantity * price
         
@@ -183,6 +191,8 @@ class BacktestEngine:
         # 記錄交易
         stock_name = self.db.get_stock_name(stock_id)
         profit = net_amount - (cost_per_share * quantity)
+        # 計算當前淨值
+        current_net_value = self._calculate_total_value(date)
         
         self.transactions.append({
             'date': date,
@@ -195,6 +205,7 @@ class BacktestEngine:
             'fee': fee,
             'profit': profit,
             'cash': self.cash,
+            'net_value': current_net_value,
             'reason': reason
         })
         
@@ -260,6 +271,7 @@ class BacktestEngine:
                            f"金額: {amount:.0f} 元，手續費/稅金: {fee} 元，實收: {net_amount:.0f} 元")
                 
                 # 記錄清算交易
+                current_net_value = self.cash  # 清算時淨值就是現金
                 self.transactions.append({
                     'date': settlement_date,
                     'action': '清算',
@@ -271,6 +283,7 @@ class BacktestEngine:
                     'fee': fee,
                     'profit': net_amount - (quantity * position['cost']),
                     'cash': self.cash,
+                    'net_value': current_net_value,
                     'reason': None
                 })
                 
@@ -302,25 +315,35 @@ class BacktestEngine:
         執行回測
         
         Args:
-            start_date: 開始日期 (YYYY-MM-DD)，若為 None 則從今天往前推 BACKTEST_DAYS 天
-            end_date: 結束日期 (YYYY-MM-DD)，若為 None 則使用最近一個交易日（往前最多找3天）
+            start_date: 開始日期 (YYYY-MM-DD)，若為 None 則使用 config.BACKTEST_START_DATE
+            end_date: 結束日期 (YYYY-MM-DD)，若為 None 則使用 config.BACKTEST_END_DATE
         """
         # 設定日期範圍
         if end_date is None:
-            # 使用最近的交易日（往前最多找3天內的交易日）
-            # 這樣可以確保包含當週最新的交易數據
-            end_dt = datetime.now()
-            for days_back in range(0, 4):  # 最多往前找3天
-                check_dt = end_dt - timedelta(days=days_back)
-                if not self.db._is_market_closed(check_dt.strftime("%Y-%m-%d")):
-                    end_date = check_dt.strftime("%Y-%m-%d")
-                    break
-            if end_date is None:  # 如果找不到交易日，回退到7天前
-                end_dt = datetime.now() - timedelta(days=7)
-                end_date = end_dt.strftime("%Y-%m-%d")
+            # 優先使用配置文件中的固定結束日期
+            if hasattr(config, 'BACKTEST_END_DATE') and config.BACKTEST_END_DATE:
+                end_date = config.BACKTEST_END_DATE
+            else:
+                # 如果沒有設定結束日期，使用最近的交易日（往前最多找3天內的交易日）
+                end_dt = datetime.now()
+                for days_back in range(0, 4):  # 最多往前找3天
+                    check_dt = end_dt - timedelta(days=days_back)
+                    if not self.db._is_market_closed(check_dt.strftime("%Y-%m-%d")):
+                        end_date = check_dt.strftime("%Y-%m-%d")
+                        break
+                if end_date is None:  # 如果找不到交易日，回退到7天前
+                    end_dt = datetime.now() - timedelta(days=7)
+                    end_date = end_dt.strftime("%Y-%m-%d")
+        
         if start_date is None:
-            start_dt = datetime.now() - timedelta(days=config.BACKTEST_DAYS)
-            start_date = start_dt.strftime("%Y-%m-%d")
+            # 優先使用配置文件中的固定開始日期
+            if hasattr(config, 'BACKTEST_START_DATE') and config.BACKTEST_START_DATE:
+                start_date = config.BACKTEST_START_DATE
+            else:
+                # 如果沒有設定開始日期，使用結束日期往前推180天
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                start_dt = end_dt - timedelta(days=180)
+                start_date = start_dt.strftime("%Y-%m-%d")
         
         logger.info(f"開始回測 - 期間: {start_date} ~ {end_date}")
         
@@ -588,6 +611,7 @@ class BacktestEngine:
                     <th>獲利</th>
                     <th>原因</th>
                     <th>剩餘資金</th>
+                    <th>淨值</th>
                 </tr>
             </thead>
             <tbody>
@@ -611,6 +635,7 @@ class BacktestEngine:
                     <td>{profit_text}</td>
                     <td>{reason_text}</td>
                     <td>{t['cash']:,.0f}</td>
+                    <td>{t.get('net_value', 0):,.0f}</td>
                 </tr>
             """
         

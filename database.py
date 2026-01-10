@@ -298,6 +298,36 @@ class StockDatabase:
         
         return data_list
     
+    def _update_stock_list_file(self):
+        """
+        更新 stock_list.txt 檔案
+        """
+        try:
+            stock_list_path = "output/stock_list.txt"
+            os.makedirs('output', exist_ok=True)
+            
+            summary = self.get_database_summary()
+            
+            with open(stock_list_path, 'w', encoding='utf-8') as f:
+                f.write("=" * 80 + "\n")
+                f.write("資料庫股票清單\n")
+                f.write("=" * 80 + "\n")
+                f.write(f"{'股票代號':<10} {'股票名稱':<20} {'最早日期':<15} {'最晚日期':<15} {'資料筆數':<10}\n")
+                f.write("-" * 80 + "\n")
+                
+                total_records = 0
+                for item in summary:
+                    f.write(f"{item['stock_id']:<10} {item['stock_name']:<20} {item['min_date']:<15} {item['max_date']:<15} {item['data_count']:<10}\n")
+                    total_records += item['data_count']
+                
+                f.write("-" * 80 + "\n")
+                f.write(f"{'總計':<10} {len(summary)} 支股票{'':<22} 總資料筆數: {total_records}\n")
+                f.write("=" * 80 + "\n")
+            
+            logger.info(f"股票清單已更新至: {stock_list_path}")
+        except Exception as e:
+            logger.warning(f"更新股票清單檔案時出錯: {e}")
+    
     def _get_stock_name_from_web(self, stock_id: str) -> Optional[str]:
         """
         從網路取得股票名稱
@@ -571,6 +601,9 @@ class StockDatabase:
             logger.debug(f"日期 {date} 為股市休市日，無法取得股票資料")
             return None
         
+        # 確保資料庫中有該股票的資料（自動下載）
+        self._ensure_stock_data(stock_id)
+        
         # 檢查資料庫中是否已有資料
         cursor = self.conn.cursor()
         cursor.execute(
@@ -663,9 +696,14 @@ class StockDatabase:
         Args:
             stock_id: 股票代號
         """
-        # 計算需要的日期範圍，確保end_date是交易日
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=config.BACKTEST_DAYS)
+        # 從 config 取得回測日期範圍
+        if hasattr(config, 'BACKTEST_START_DATE') and hasattr(config, 'BACKTEST_END_DATE'):
+            start_date = datetime.strptime(config.BACKTEST_START_DATE, "%Y-%m-%d")
+            end_date = datetime.strptime(config.BACKTEST_END_DATE, "%Y-%m-%d")
+        else:
+            # 向後相容：如果沒有設定固定日期，使用當前時間往前推180天
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=180)
         
         # 調整為實際的交易日
         # 從今天開始往前找最後的交易日（往前最多找7天）
@@ -674,8 +712,9 @@ class StockDatabase:
             logger.warning(f"在過去7天內未找到交易日，無法補充資料")
             return
         
-        # 從開始日期往前找最前的交易日
-        first_trading_day = self._get_trading_day_in_range(start_date, start_date - timedelta(days=7), direction='backward')
+        # 使用設定的開始日期（不再往前調整）
+        # 注意：為了計算第一天的漲跌幅，實際會從前一個交易日開始抓取
+        first_trading_day = self._get_trading_day_in_range(start_date - timedelta(days=1), start_date - timedelta(days=7), direction='backward')
         if not first_trading_day:
             first_trading_day = start_date
         
@@ -728,10 +767,6 @@ class StockDatabase:
                     logger.warning(f"後期資料補充的日期範圍異常 ({fetch_start} ~ {fetch_end})，跳過補充")
             elif days_behind > 0:
                 logger.debug(f"股票 {stock_id} 數據僅落後 {days_behind} 天，跳過補充（可能是API延遲）")
-            
-            # 資料已經完全涵蓋所需範圍
-            if db_start <= first_trading_day and db_end >= last_trading_day:
-                logger.info(f"股票 {stock_id} 的資料已完整涵蓋所需範圍 ({db_start.strftime('%Y-%m-%d')} ~ {db_end.strftime('%Y-%m-%d')})")
     
     def _save_stock_data_to_db(self, stock_id: str, data_list: List[Dict]):
         """
@@ -760,6 +795,9 @@ class StockDatabase:
             ))
         self.conn.commit()
         logger.info("資料儲存完成")
+        
+        # 資料儲存完成後，更新 stock_list.txt
+        self._update_stock_list_file()
     
     def get_chart_filename(self, stock_id: str) -> str:
         """
@@ -997,40 +1035,50 @@ if __name__ == "__main__":
         epilog="""
 使用範例：
   # 查詢數據庫概覽
-  python database.py summary
+  python database.py summary (或 s)
   
   # 查詢特定股票的資料
-  python database.py query --stock 2330
+  python database.py query --stock 2330 (或 q -s 2330)
   python database.py query --stock 0050 --start 2025-09-01 --end 2025-09-30
   
-  # 刪除特定股票的資料
-  python database.py delete --stock 2330
+  # 下載股票資料
+  python database.py download --stock 2330 (或 d -s 2330)
+  python database.py download --stock 0050 --start 2025-09-01 --end 2025-09-30
   
-  # 刪除特定日期範圍的資料
-  python database.py delete --stock 0050 --start 2025-09-01 --end 2025-09-30
+  # 移除特定股票的資料
+  python database.py remove --stock 2330 (或 rm -s 2330)
   
-  # 刪除整個資料庫
-  python database.py delete --all
+  # 移除特定日期範圍的資料
+  python database.py remove --stock 0050 --start 2025-09-01 --end 2025-09-30
+  
+  # 移除整個資料庫
+  python database.py remove --all
         """
     )
     
     subparsers = parser.add_subparsers(dest='command', help='命令類型')
     
     # 查詢命令
-    query_parser = subparsers.add_parser('query', help='查詢股票資料')
-    query_parser.add_argument('--stock', type=str, help='股票代號（如：2330）')
+    query_parser = subparsers.add_parser('query', aliases=['q'], help='查詢股票資料')
+    query_parser.add_argument('-s', '--stock', type=str, help='股票代號（如：2330）')
     query_parser.add_argument('--start', type=str, help='開始日期（YYYY-MM-DD）')
     query_parser.add_argument('--end', type=str, help='結束日期（YYYY-MM-DD）')
     
-    # 刪除命令
-    delete_parser = subparsers.add_parser('delete', help='刪除股票資料')
-    delete_parser.add_argument('--stock', type=str, help='股票代號（如：2330）')
-    delete_parser.add_argument('--start', type=str, help='開始日期（YYYY-MM-DD）')
-    delete_parser.add_argument('--end', type=str, help='結束日期（YYYY-MM-DD）')
-    delete_parser.add_argument('--all', action='store_true', help='刪除整個資料庫')
+    # 下載命令
+    download_parser = subparsers.add_parser('download', aliases=['d'], help='下載股票資料')
+    download_parser.add_argument('-s', '--stock', type=str, required=True, help='股票代號（如：2330）')
+    download_parser.add_argument('--start', type=str, help='開始日期（YYYY-MM-DD）')
+    download_parser.add_argument('--end', type=str, help='結束日期（YYYY-MM-DD）')
+    
+    # 移除命令
+    remove_parser = subparsers.add_parser('remove', aliases=['r'], help='移除股票資料')
+    remove_parser.add_argument('-s', '--stock', type=str, help='股票代號（如：2330）')
+    remove_parser.add_argument('--start', type=str, help='開始日期（YYYY-MM-DD）')
+    remove_parser.add_argument('--end', type=str, help='結束日期（YYYY-MM-DD）')
+    remove_parser.add_argument('--all', action='store_true', help='移除整個資料庫')
     
     # 概覽命令
-    summary_parser = subparsers.add_parser('summary', help='查詢資料庫概覽')
+    summary_parser = subparsers.add_parser('summary', aliases=['s'], help='查詢資料庫概覽')
     
     args = parser.parse_args()
     
@@ -1038,7 +1086,7 @@ if __name__ == "__main__":
     db = StockDatabase()
     
     try:
-        if args.command == 'summary':
+        if args.command in ['summary', 's']:
             # 顯示資料庫概覽
             summary = db.get_database_summary()
             if summary:
@@ -1057,7 +1105,7 @@ if __name__ == "__main__":
             else:
                 print("資料庫中沒有任何股票資料")
         
-        elif args.command == 'query':
+        elif args.command in ['query', 'q']:
             if not args.stock:
                 print("✗ 錯誤：查詢時必須指定 --stock 股票代號")
             else:
@@ -1102,24 +1150,56 @@ if __name__ == "__main__":
                 else:
                     print(f"\n✗ 找不到股票 {args.stock} 的資料\n")
         
-        elif args.command == 'delete':
+        elif args.command in ['download', 'd']:
+            # 下載股票資料
+            stock_id = args.stock
+            
+            # 確定日期範圍
+            if args.start and args.end:
+                start_date = args.start
+                end_date = args.end
+            else:
+                # 如果未指定日期，下載最近180天的資料
+                end_date = datetime.now().strftime("%Y-%m-%d")
+                start_date = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
+            
+            print(f"\n開始下載股票 {stock_id} 的資料 ({start_date} ~ {end_date})...")
+            
+            # 取得股票名稱
+            stock_name = db.get_stock_name(stock_id)
+            if stock_name:
+                print(f"股票名稱: {stock_name}")
+            
+            # 從網路抓取資料
+            data_list = db._fetch_stock_data_from_web(stock_id, start_date, end_date)
+            
+            if data_list:
+                # 儲存到資料庫
+                db._save_stock_data_to_db(stock_id, data_list)
+                print(f"✓ 成功下載並儲存 {len(data_list)} 筆資料\n")
+            else:
+                print(f"✗ 未能下載到股票 {stock_id} 的資料\n")
+        
+        elif args.command in ['remove', 'r']:
             cursor = db.conn.cursor()
             
             if args.all:
-                # 刪除整個資料庫
-                confirm = input("⚠ 確認要刪除整個資料庫嗎？(yes/no): ")
+                # 移除整個資料庫
+                confirm = input("⚠ 確認要移除整個資料庫嗎？(yes/no): ")
                 if confirm.lower() == 'yes':
                     cursor.execute("DELETE FROM stock_daily")
                     cursor.execute("DELETE FROM stock_info")
                     db.conn.commit()
                     print("✓ 資料庫已清空")
+                    # 更新 stock_list.txt
+                    db._update_stock_list_file()
                 else:
                     print("✗ 已取消操作")
             
             elif args.stock:
                 if args.start and args.end:
-                    # 刪除特定日期範圍的資料
-                    confirm = input(f"⚠ 確認要刪除 {args.stock} 的 {args.start} ~ {args.end} 資料嗎？(yes/no): ")
+                    # 移除特定日期範圍的資料
+                    confirm = input(f"⚠ 確認要移除 {args.stock} 的 {args.start} ~ {args.end} 資料嗎？(yes/no): ")
                     if confirm.lower() == 'yes':
                         cursor.execute("""
                             DELETE FROM stock_daily
@@ -1127,22 +1207,26 @@ if __name__ == "__main__":
                         """, (args.stock, args.start, args.end))
                         db.conn.commit()
                         deleted_count = cursor.rowcount
-                        print(f"✓ 已刪除 {deleted_count} 筆資料")
+                        print(f"✓ 已移除 {deleted_count} 筆資料")
+                        # 更新 stock_list.txt
+                        db._update_stock_list_file()
                     else:
                         print("✗ 已取消操作")
                 else:
-                    # 刪除所有該股票的資料
-                    confirm = input(f"⚠ 確認要刪除 {args.stock} 的所有資料嗎？(yes/no): ")
+                    # 移除所有該股票的資料
+                    confirm = input(f"⚠ 確認要移除 {args.stock} 的所有資料嗎？(yes/no): ")
                     if confirm.lower() == 'yes':
                         cursor.execute("DELETE FROM stock_daily WHERE stock_id = ?", (args.stock,))
                         cursor.execute("DELETE FROM stock_info WHERE stock_id = ?", (args.stock,))
                         db.conn.commit()
                         deleted_count = cursor.rowcount
-                        print(f"✓ 已刪除 {deleted_count} 筆資料")
+                        print(f"✓ 已移除 {deleted_count} 筆資料")
+                        # 更新 stock_list.txt
+                        db._update_stock_list_file()
                     else:
                         print("✗ 已取消操作")
             else:
-                print("✗ 錯誤：刪除時必須指定 --stock 或 --all")
+                print("✗ 錯誤：移除時必須指定 --stock 或 --all")
         
         else:
             parser.print_help()
