@@ -198,6 +198,8 @@ class StockDatabase:
         try:
             # 逐月抓取（TWSE API 限制）
             current_date = start_dt
+            consecutive_empty_months = 0  # 連續空月份計數器
+            
             while current_date <= end_dt:
                 year = current_date.year
                 month = current_date.month
@@ -210,6 +212,8 @@ class StockDatabase:
                 }
                 
                 logger.info(f"正在抓取 {year}年{month}月 的資料...")
+                
+                month_data_count = 0  # 當前月份抓取到的資料筆數
                 
                 try:
                     response = requests.get(url, params=params, timeout=10)
@@ -254,6 +258,7 @@ class StockDatabase:
                                             'volume': volume,
                                             'change_rate': change_rate
                                         })
+                                        month_data_count += 1
                                 except (ValueError, IndexError) as e:
                                     logger.debug(f"處理資料行時出錯: {e}")
                                     continue
@@ -266,6 +271,19 @@ class StockDatabase:
                     logger.warning(f"網路請求錯誤: {e}")
                 except Exception as e:
                     logger.warning(f"處理 API 回應時出錯: {e}")
+                
+                # 檢查當前月份是否有抓到資料
+                if month_data_count == 0:
+                    consecutive_empty_months += 1
+                    logger.warning(f"⚠️  {year}年{month}月 無資料 (連續 {consecutive_empty_months} 個月無資料)")
+                    
+                    # 如果連續2個月都沒有資料，判定為API異常
+                    if consecutive_empty_months >= 2:
+                        logger.error(f"🚨 連續 {consecutive_empty_months} 個月無法取得資料，API 可能出現問題！停止抓取股票 {stock_id}")
+                        break
+                else:
+                    # 有資料則重置計數器
+                    consecutive_empty_months = 0
                 
                 # 移到下個月
                 if current_date.month == 12:
@@ -1029,8 +1047,12 @@ if __name__ == "__main__":
                 print("=" * 80)
                 print(f"{'股票代號':<10} {'股票名稱':<20} {'最早日期':<15} {'最晚日期':<15} {'資料筆數':<10}")
                 print("-" * 80)
+                total_records = 0
                 for item in summary:
                     print(f"{item['stock_id']:<10} {item['stock_name']:<20} {item['min_date']:<15} {item['max_date']:<15} {item['data_count']:<10}")
+                    total_records += item['data_count']
+                print("-" * 80)
+                print(f"{'總計':<10} {len(summary)} 支股票{'':<22} {'總資料筆數: ' + str(total_records):<25}")
                 print("=" * 80 + "\n")
             else:
                 print("資料庫中沒有任何股票資料")

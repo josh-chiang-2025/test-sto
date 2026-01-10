@@ -42,15 +42,19 @@ def generate_database_view(output_path: str = None):
         db.close()
         return None
     
+    # 建立個股圖表的子資料夾
+    charts_dir = os.path.join(CHART_PATH, "stock_charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    
     # 生成走勢圖
     chart_files = []
     for stock_info in summary:
         stock_id = stock_info['stock_id']
         chart_filename = db.get_chart_filename(stock_id)
-        chart_path = os.path.join(CHART_PATH, chart_filename)
+        chart_path = os.path.join(charts_dir, chart_filename)
         
         db.plot_stock_chart(stock_id, output_path=chart_path)
-        chart_files.append(chart_filename)  # 相對路徑用於 HTML
+        chart_files.append(f"stock_charts/{chart_filename}")  # 相對路徑用於 HTML
     
     # 生成 HTML
     html = f"""
@@ -75,130 +79,131 @@ def generate_database_view(output_path: str = None):
         }}
         
         .container {{
-            max-width: 1200px;
+            max-width: 1600px;
             margin: 0 auto;
         }}
         
         .header {{
             background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            margin-bottom: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
             text-align: center;
         }}
         
         .header h1 {{
             color: #333;
-            margin-bottom: 10px;
-            font-size: 2.5em;
+            margin-bottom: 5px;
+            font-size: 1.8em;
         }}
         
         .header p {{
             color: #666;
-            font-size: 1.1em;
+            font-size: 0.95em;
         }}
         
         .stats {{
             display: flex;
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: 15px;
+            margin-bottom: 20px;
             flex-wrap: wrap;
         }}
         
         .stat-card {{
             flex: 1;
-            min-width: 200px;
+            min-width: 150px;
             background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             text-align: center;
         }}
         
         .stat-card .number {{
-            font-size: 3em;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 10px;
-        }}
-        
-        .stat-card .label {{
-            color: #666;
-            font-size: 1.1em;
-        }}
-        
-        .stock-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-        }}
-        
-        .stock-card {{
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }}
-        
-        .stock-card::before {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 5px;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        }}
-        
-        .stock-card:hover {{
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
-        }}
-        
-        .stock-card .stock-id {{
             font-size: 2em;
             font-weight: bold;
             color: #667eea;
             margin-bottom: 5px;
         }}
         
-        .stock-card .stock-name {{
-            font-size: 1.5em;
-            color: #333;
-            margin-bottom: 15px;
-        }}
-        
-        .stock-card .date-range {{
+        .stat-card .label {{
             color: #666;
             font-size: 0.9em;
-            margin-bottom: 5px;
         }}
         
-        .stock-card .data-count {{
-            color: #999;
-            font-size: 0.85em;
+        .stock-table-container {{
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            overflow: hidden;
         }}
         
-        .stock-card .view-btn {{
-            margin-top: 15px;
-            padding: 10px 20px;
+        .stock-table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        
+        .stock-table thead {{
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }}
+        
+        .stock-table th {{
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.95em;
+        }}
+        
+        .stock-table td {{
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }}
+        
+        .stock-table tbody tr {{
+            transition: background-color 0.2s ease;
+        }}
+        
+        .stock-table tbody tr:hover {{
+            background-color: #f8f9ff;
+        }}
+        
+        .stock-id {{
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1.1em;
+        }}
+        
+        .stock-name {{
+            color: #333;
+            font-weight: 500;
+        }}
+        
+        .date-range {{
+            color: #666;
+            font-size: 0.9em;
+        }}
+        
+        .data-count {{
+            color: #666;
+            font-size: 0.9em;
+        }}
+        
+        .view-btn {{
+            padding: 8px 16px;
             background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            border-radius: 25px;
+            border-radius: 20px;
             cursor: pointer;
-            font-size: 1em;
+            font-size: 0.9em;
             transition: all 0.3s ease;
         }}
         
-        .stock-card .view-btn:hover {{
+        .view-btn:hover {{
             transform: scale(1.05);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);
         }}
         
         .modal {{
@@ -282,23 +287,38 @@ def generate_database_view(output_path: str = None):
             </div>
         </div>
         
-        <div class="stock-grid">
+        <div class="stock-table-container">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>代碼</th>
+                        <th>名稱</th>
+                        <th>資料期間</th>
+                        <th>筆數</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
 """
     
     for i, stock_info in enumerate(summary):
         html += f"""
-            <div class="stock-card">
-                <div class="stock-id">{stock_info['stock_id']}</div>
-                <div class="stock-name">{stock_info['stock_name']}</div>
-                <div class="date-range">📅 {stock_info['min_date']} ~ {stock_info['max_date']}</div>
-                <div class="data-count">📈 {stock_info['data_count']} 筆資料</div>
-                <button class="view-btn" onclick="showChart('{chart_files[i]}', '{stock_info['stock_id']}', '{stock_info['stock_name']}')">
-                    查看走勢圖
-                </button>
-            </div>
+                    <tr>
+                        <td><span class="stock-id">{stock_info['stock_id']}</span></td>
+                        <td><span class="stock-name">{stock_info['stock_name']}</span></td>
+                        <td><span class="date-range">{stock_info['min_date']} ~ {stock_info['max_date']}</span></td>
+                        <td><span class="data-count">{stock_info['data_count']}</span></td>
+                        <td>
+                            <button class="view-btn" onclick="showChart('{chart_files[i]}', '{stock_info['stock_id']}', '{stock_info['stock_name']}')">
+                                查看走勢
+                            </button>
+                        </td>
+                    </tr>
 """
     
     html += """
+                </tbody>
+            </table>
         </div>
     </div>
     
