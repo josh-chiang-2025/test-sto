@@ -542,16 +542,20 @@ class BacktestEngine:
             padding: 20px;
             margin: 20px 0;
             border-radius: 4px;
+            font-size: 13px;
         }}
         .strategy-description h3 {{
             margin-top: 0;
             color: #2196F3;
+            font-size: 16px;
         }}
         .strategy-description ul {{
             margin: 10px 0;
+            font-size: 12px;
         }}
         .strategy-description li {{
             margin: 5px 0;
+            font-size: 12px;
         }}
         #chart {{
             margin-top: 30px;
